@@ -2,51 +2,55 @@ import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OllamaEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_community.vectorstores import FAISS
 from langchain_community.llms import Ollama
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 import os
+import pickle
 
 @st.cache_resource
 def get_vectorstore():
-    # Load and process PDF
-    loader = PyPDFLoader("Academic-Regulations.pdf")
-    text_documents = loader.load()
-    
-    # Split text
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
-        separators=["\n\n", "\n", " ", ""]
-    )
-    documents = text_splitter.split_documents(text_documents)
+    # Paths for persistence
+    index_path = "faiss_index"
+    docstore_path = "docstore.pkl"
 
-    # Create or load vector store
-    persist_dir = "chroma_db"
     embedding_function = OllamaEmbeddings(model="all-minilm")
-    
-    if os.path.exists(persist_dir):
-        db = Chroma(persist_directory=persist_dir, 
-                    embedding_function=embedding_function)
+
+    # Load from disk if available
+    if os.path.exists(index_path) and os.path.exists(docstore_path):
+        with open(docstore_path, "rb") as f:
+            documents = pickle.load(f)
+        db = FAISS.load_local(index_path, embeddings=embedding_function, documents=documents)
     else:
-        db = Chroma.from_documents(
-            documents=documents,
-            embedding=embedding_function,
-            persist_directory=persist_dir
+        # Load and split documents
+        loader = PyPDFLoader("Academic-Regulations.pdf")
+        text_documents = loader.load()
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            separators=["\n\n", "\n", " ", ""]
         )
-    
+        documents = text_splitter.split_documents(text_documents)
+
+        # Create FAISS index
+        db = FAISS.from_documents(documents, embedding_function)
+        db.save_local(index_path)
+
+        # Save documents separately (for retrieval context)
+        with open(docstore_path, "wb") as f:
+            pickle.dump(documents, f)
+
     return db
 
 # Initialize with a spinner
 with st.spinner("Initializing VITdocuMind..."):
     db = get_vectorstore()
     retriever = db.as_retriever(search_kwargs={"k": 4})
-    
-    # Initialize LLM
+
     llm = Ollama(model="phi3", temperature=0.3)
-    
+
     prompt = ChatPromptTemplate.from_template("""
     You are an expert assistant for VIT University's academic regulations. 
     Answer questions STRICTLY using only the provided context from the official document.
@@ -66,8 +70,7 @@ with st.spinner("Initializing VITdocuMind..."):
     - [Concise point 2]
     - [Relevant section reference if applicable]
     """)
-    
-    # Create chains
+
     document_chain = create_stuff_documents_chain(llm, prompt)
     retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
@@ -86,7 +89,6 @@ if user_input:
             st.subheader("Answer:")
             st.markdown(answer)
             
-            # Source chunks (for debugging)
             with st.expander("View relevant regulation excerpts"):
                 for doc in response.get("context", []):
                     st.caption(f"From page {doc.metadata.get('page', 'N/A')}:")
