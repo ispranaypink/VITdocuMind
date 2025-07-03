@@ -1,11 +1,24 @@
 import sys
-__import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+import platform
+import streamlit as st
 
 import sqlite3
-import streamlit as st
-st.write(f"Active SQLite version: {sqlite3.sqlite_version}")
+st.success(f"✅ SQLite {sqlite3.sqlite_version} loaded successfully")
 
+# Verify ChromaDB compatibility
+if tuple(map(int, sqlite3.sqlite_version.split('.'))) < (3, 35, 0):
+    st.error(f"🚨 ChromaDB requires SQLite ≥3.35.0 (you have {sqlite3.sqlite_version})")
+    st.stop()
+
+# Verify ChromaDB compatibility
+sqlite_version = tuple(map(int, sqlite3.sqlite_version.split('.')))
+if sqlite_version < (3, 35, 0):
+    st.error(f"""
+    🚨 ChromaDB requires SQLite ≥3.35.0 (you have {sqlite3.sqlite_version})
+    Add to requirements.txt:
+    pysqlite3==0.5.4
+    """)
+    st.stop()
 
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -46,7 +59,6 @@ with st.spinner("Initializing VITdocuMind..."):
     # Initialize LLM
     llm = Ollama(model="phi3", temperature=0.3)
     
-    
     prompt = ChatPromptTemplate.from_template("""
     You are an expert assistant for VIT University's academic regulations. 
     Answer questions STRICTLY using only the provided context from the official document.
@@ -84,11 +96,10 @@ if user_input:
             response = retrieval_chain.invoke({"input": user_input})
             answer = response.get("answer", "No answer found.")
             
-            
             st.subheader("Answer:")
             st.markdown(answer)
             
-            #source chunks (for debugging)
+            # Source chunks (for debugging)
             with st.expander("View relevant regulation excerpts"):
                 for doc in response.get("context", []):
                     st.caption(f"From page {doc.metadata.get('page', 'N/A')}:")
