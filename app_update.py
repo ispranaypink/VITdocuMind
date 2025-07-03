@@ -11,8 +11,10 @@ import os
 import pickle
 from dotenv import load_dotenv
 
-# Load .env for HuggingFace token
-load_dotenv()
+
+# Use secrets secrets.toml
+if "HUGGINGFACEHUB_API_TOKEN" in st.secrets:
+    os.environ["HUGGINGFACEHUB_API_TOKEN"] = st.secrets["HUGGINGFACEHUB_API_TOKEN"]
 
 @st.cache_resource
 def get_vectorstore():
