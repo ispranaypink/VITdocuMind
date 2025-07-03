@@ -9,8 +9,8 @@ from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain.chains import create_retrieval_chain
 import os
 
-# Initialize with a spinner
-with st.spinner("Initializing VITdocuMind..."):
+@st.cache_resource
+def get_vectorstore():
     # Load and process PDF
     loader = PyPDFLoader("Academic-Regulations.pdf")
     text_documents = loader.load()
@@ -22,18 +22,27 @@ with st.spinner("Initializing VITdocuMind..."):
         separators=["\n\n", "\n", " ", ""]
     )
     documents = text_splitter.split_documents(text_documents)
-    
-    # Create vector store
+
+    # Create or load vector store
     persist_dir = "chroma_db"
+    embedding_function = OllamaEmbeddings(model="all-minilm")
+    
     if os.path.exists(persist_dir):
         db = Chroma(persist_directory=persist_dir, 
-                   embedding_function=OllamaEmbeddings(model="all-minilm"))
+                    embedding_function=embedding_function)
     else:
         db = Chroma.from_documents(
             documents=documents,
-            embedding=OllamaEmbeddings(model="all-minilm"),
+            embedding=embedding_function,
             persist_directory=persist_dir
         )
+    
+    return db
+
+# Initialize with a spinner
+with st.spinner("Initializing VITdocuMind..."):
+    db = get_vectorstore()
+    retriever = db.as_retriever(search_kwargs={"k": 4})
     
     # Initialize LLM
     llm = Ollama(model="phi3", temperature=0.3)
@@ -60,7 +69,6 @@ with st.spinner("Initializing VITdocuMind..."):
     
     # Create chains
     document_chain = create_stuff_documents_chain(llm, prompt)
-    retriever = db.as_retriever(search_kwargs={"k": 4})   
     retrieval_chain = create_retrieval_chain(retriever, document_chain)
 
 # Streamlit UI
