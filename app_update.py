@@ -1,27 +1,4 @@
-import sys
-__import__('pysqlite3')
-sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-import platform
 import streamlit as st
-
-import sqlite3
-st.success(f"✅ SQLite {sqlite3.sqlite_version} loaded successfully")
-
-# Verify ChromaDB compatibility
-if tuple(map(int, sqlite3.sqlite_version.split('.'))) < (3, 35, 0):
-    st.error(f"🚨 ChromaDB requires SQLite ≥3.35.0 (you have {sqlite3.sqlite_version})")
-    st.stop()
-
-# Verify ChromaDB compatibility
-sqlite_version = tuple(map(int, sqlite3.sqlite_version.split('.')))
-if sqlite_version < (3, 35, 0):
-    st.error(f"""
-    🚨 ChromaDB requires SQLite ≥3.35.0 (you have {sqlite3.sqlite_version})
-    Add to requirements.txt:
-    pysqlite3==0.5.4
-    """)
-    st.stop()
-
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.embeddings import OllamaEmbeddings
